@@ -1,7 +1,13 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 function Landing() {
+  const navigate = useNavigate();
+
+  const handleGuestAccess = () => {
+    navigate('/chat');
+  };
+
   return (
     <div className="min-h-screen bg-gray-700 flex flex-col items-center justify-center">
       <img src="/assets/logo.png" alt="Logo" className="h-16 mb-4" />
@@ -14,8 +20,11 @@ function Landing() {
           <button className="w-full bg-gray-700 text-white py-2 rounded-full mb-2">Log In</button>
         </Link>
         <Link to="/signup">
-          <button className="w-full bg-gray-700 text-white py-2 rounded-full">Sign Up</button>
+          <button className="w-full bg-gray-700 text-white py-2 rounded-full mb-2">Sign Up</button>
         </Link>
+        <button onClick={handleGuestAccess} className="w-full bg-blue-500 text-white py-2 rounded-full mt-2">
+          Continue as Guest
+        </button>
       </div>
     </div>
   );
