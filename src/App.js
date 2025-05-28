@@ -3,8 +3,9 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
-import Chat from './pages/Chat';
-import './App.css';
+import Chat from './pages/Chat';  // ✔ Move this to the top
+import '@fortawesome/fontawesome-free/css/all.min.css';
+
 
 function App() {
   return (
@@ -19,4 +20,4 @@ function App() {
   );
 }
 
-export default App;
+export default App;
