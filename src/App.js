@@ -4,6 +4,7 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Chat from './pages/Chat';
+import './App.css';
 
 function App() {
   return (
@@ -19,4 +20,3 @@ function App() {
 }
 
 export default App;
-
