@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { sendMessageToLLM } from '../chatService';
+import { saveChat, getChatHistory } from '../chatStorage';
 import Profile from './Profile';
 
 function Chat() {
@@ -7,9 +8,16 @@ function Chat() {
   const [showProfile, setShowProfile] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
+  const [chatHistory, setChatHistory] = useState([]);
 
-  const toggleSidebar = () => setShowSidebar(prev => !prev);
-  const openNewChatTab = () => window.open(window.location.origin + '/chat', '_blank');
+  const toggleSidebar = () => {
+    setChatHistory(getChatHistory()); // Load history when opening sidebar
+    setShowSidebar(prev => !prev);
+  };
+
+  const openNewChatTab = () => {
+    window.open(window.location.origin + '/chat', '_blank');
+  };
 
   const handleSend = async () => {
     if (input.trim() === '') return;
@@ -20,24 +28,54 @@ function Chat() {
 
     try {
       const reply = await sendMessageToLLM(input);
-      setMessages([...updatedMessages, { role: 'assistant', text: reply }]);
+      const newChat = [...updatedMessages, { role: 'assistant', text: reply }];
+      setMessages(newChat);
+
+      // Save chat session
+      saveChat({
+        title: updatedMessages[0]?.text.slice(0, 30) + '...',
+        messages: newChat,
+      });
+
+      // Refresh chat history in sidebar
+      setChatHistory(getChatHistory());
     } catch (error) {
       console.error("Message send failed:", error);
-      setMessages([...updatedMessages, { role: 'assistant', text: "Something went wrong." }]);
+      const failedChat = [...updatedMessages, { role: 'assistant', text: "Something went wrong." }];
+      setMessages(failedChat);
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-700 text-white flex">
       {showSidebar && (
-        <aside className="w-64 bg-gray-800 p-4 border-r border-gray-600 font-serif">
+        <aside className="w-64 bg-gray-800 p-4 border-r border-gray-600 font-serif overflow-y-auto">
           <button
             onClick={openNewChatTab}
             className="bg-white text-black rounded-full px-4 py-2 mb-4 w-full"
           >
             New Chat
           </button>
-          {/* Add sidebar history content here if needed */}
+
+          <h3 className="font-bold text-lg mb-2">Previous Chats</h3>
+          {chatHistory.length === 0 ? (
+            <p className="text-gray-400 text-sm">No history yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {chatHistory.map((chat) => (
+                <li
+                  key={chat.id}
+                  className="cursor-pointer text-sm hover:underline"
+                  onClick={() => {
+                    setMessages(chat.messages);
+                    setShowSidebar(false);
+                  }}
+                >
+                  {chat.title}
+                </li>
+              ))}
+            </ul>
+          )}
         </aside>
       )}
 
