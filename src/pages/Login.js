@@ -29,12 +29,6 @@ const handleLogin = async (e) => {
     // Show custom messages for specific error codes
     let message;
     switch (errorCode) {
-      case 'auth/user-not-found':
-        message = '❌ No user found with this email.';
-        break;
-      case 'auth/wrong-password':
-        message = '❌ Incorrect password.';
-        break;
       default:
         message = '❌ Login failed. Please try again.';
     }
