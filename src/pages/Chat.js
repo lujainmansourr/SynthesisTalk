@@ -25,7 +25,7 @@ function Chat() {
     return saved ? JSON.parse(saved).name : 'Guest';
   });
 
-  const [sessionId, setSessionId] = useState('');
+  const [sessionId, setSessionId] = useState(localStorage.getItem('sessionId') || '');
   const [showFileActionButtons, setShowFileActionButtons] = useState(false);
   const [lastUploadedFileName, setLastUploadedFileName] = useState('');
 
@@ -47,16 +47,27 @@ function Chat() {
     setMessages([]);
     setActiveChatId(newId);
     setShowFileActionButtons(false);
+    const newSessionId = newId;
+    setSessionId(newSessionId);
     localStorage.setItem('activeChatId', newId);
+    localStorage.setItem('sessionId', newSessionId);
   };
 
   const handleSend = async () => {
     if (!input.trim()) return;
+
+    const currentSessionId = sessionId || Date.now().toString();
+    if (!sessionId) {
+      setSessionId(currentSessionId);
+      localStorage.setItem('sessionId', currentSessionId);
+    }
+
     const updatedMessages = [...messages, { role: 'user', text: input }];
     setMessages(updatedMessages);
     setInput('');
+
     try {
-      const response = await sendMessageToLLM(input);
+      const response = await sendMessageToLLM(input, currentSessionId);
       const newChat = [...updatedMessages, { role: 'assistant', text: response.reply }];
       setMessages(newChat);
       const id = activeChatId || Date.now().toString();
@@ -65,6 +76,7 @@ function Chat() {
         title: updatedMessages[0]?.text.slice(0, 30) + '...',
         messages: newChat,
         userId: userName,
+        timestamp: new Date().toISOString(),
       });
       localStorage.setItem('activeChatId', id);
       setActiveChatId(id);
@@ -75,9 +87,44 @@ function Chat() {
     }
   };
 
+  const handleWebSearch = async () => {
+    if (!input.trim()) return;
+
+    const currentSessionId = sessionId || Date.now().toString();
+    if (!sessionId) {
+      setSessionId(currentSessionId);
+      localStorage.setItem('sessionId', currentSessionId);
+    }
+
+    const updatedMessages = [...messages, { role: 'user', text: input }];
+    setMessages(updatedMessages);
+    setInput('');
+
+    try {
+      const response = await sendMessageToLLM(input, currentSessionId, true);
+      const newChat = [...updatedMessages, { role: 'assistant', text: response.reply }];
+      setMessages(newChat);
+      const id = activeChatId || Date.now().toString();
+      saveChat({
+        id,
+        title: updatedMessages[0]?.text.slice(0, 30) + '...',
+        messages: newChat,
+        userId: userName,
+        timestamp: new Date().toISOString(),
+      });
+      localStorage.setItem('activeChatId', id);
+      setActiveChatId(id);
+      setChatHistory(getChatHistory(userName));
+    } catch (error) {
+      const failed = [...updatedMessages, { role: 'assistant', text: '⚠️ Web search failed.' }];
+      setMessages(failed);
+    }
+  };
+
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
+
     try {
       const result = await uploadFile(file);
       const fileMsg = {
@@ -85,6 +132,7 @@ function Chat() {
         text: `✅ File '${file.name}' uploaded successfully. Choose an action below.`,
       };
       setSessionId(result.session_id);
+      localStorage.setItem('sessionId', result.session_id);
       setMessages(prev => [...prev, fileMsg]);
       setLastUploadedFileName(file.name);
       setShowFileActionButtons(true);
@@ -110,6 +158,7 @@ function Chat() {
         title: `File '${lastUploadedFileName}' uploaded`,
         messages: updated,
         userId: userName,
+        timestamp: new Date().toISOString(),
       });
       localStorage.setItem('activeChatId', id);
       setActiveChatId(id);
@@ -124,7 +173,9 @@ function Chat() {
     if (id === activeChatId) {
       setMessages([]);
       localStorage.removeItem('activeChatId');
+      localStorage.removeItem('sessionId');
       setActiveChatId(null);
+      setSessionId('');
     }
     setChatHistory(getChatHistory(userName));
   };
@@ -134,6 +185,7 @@ function Chat() {
     setMessages([]);
     setChatHistory([]);
     localStorage.removeItem('activeChatId');
+    localStorage.removeItem('sessionId');
   };
 
   const startEditingTitle = (chat) => {
@@ -249,6 +301,7 @@ function Chat() {
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             />
             <button className="text-3xl ml-4" onClick={handleSend}>↑</button>
+            <button className="text-3xl ml-4" onClick={handleWebSearch} title="Web Search">🔍</button>
           </div>
         </footer>
       </div>

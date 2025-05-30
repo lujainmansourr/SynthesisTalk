@@ -1,7 +1,7 @@
 // src/pages/Chat.js
 
 import React, { useState, useEffect } from 'react';
-import { sendMessageToLLM } from '../chatService';
+import { sendMessageToLLM, uploadFile, analyzeFile } from '../chatService';
 import {
   saveChat,
   getChatHistory,
@@ -20,60 +20,102 @@ function Chat() {
   const [editingChatId, setEditingChatId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
   const [activeChatId, setActiveChatId] = useState(localStorage.getItem('activeChatId'));
-
   const [userName] = useState(() => {
     const saved = localStorage.getItem('chatUser');
     return saved ? JSON.parse(saved).name : 'Guest';
   });
 
-  useEffect(() => {
-    const history = getChatHistory(userName);
-    setChatHistory(history);
+  const [sessionId, setSessionId] = useState('');
+  const [showFileActionButtons, setShowFileActionButtons] = useState(false);
+  const [lastUploadedFileName, setLastUploadedFileName] = useState('');
 
+  useEffect(() => {
+    setChatHistory(getChatHistory(userName));
     if (activeChatId) {
-      const existing = history.find(c => c.id === activeChatId);
-      if (existing) setMessages(existing.messages);
+      const saved = getChatHistory(userName).find(c => c.id === activeChatId);
+      if (saved) setMessages(saved.messages);
     }
-  }, [userName, activeChatId]);
+  }, [activeChatId, userName]);
 
   const toggleSidebar = () => {
     setChatHistory(getChatHistory(userName));
     setShowSidebar(prev => !prev);
   };
 
-  const openNewChatTab = () => {
-    window.open(window.location.origin + '/chat', '_blank');
+  const startNewChat = () => {
+    const newId = Date.now().toString();
+    setMessages([]);
+    setActiveChatId(newId);
+    setShowFileActionButtons(false);
+    localStorage.setItem('activeChatId', newId);
   };
 
   const handleSend = async () => {
     if (!input.trim()) return;
-
     const updatedMessages = [...messages, { role: 'user', text: input }];
     setMessages(updatedMessages);
     setInput('');
-
     try {
       const response = await sendMessageToLLM(input);
       const newChat = [...updatedMessages, { role: 'assistant', text: response.reply }];
       setMessages(newChat);
-
       const id = activeChatId || Date.now().toString();
-
       saveChat({
         id,
         title: updatedMessages[0]?.text.slice(0, 30) + '...',
         messages: newChat,
         userId: userName,
       });
-
       localStorage.setItem('activeChatId', id);
       setActiveChatId(id);
       setChatHistory(getChatHistory(userName));
     } catch (error) {
-      setMessages([
-        ...updatedMessages,
-        { role: 'assistant', text: '⚠️ LLM error: Something went wrong.' },
-      ]);
+      const failed = [...updatedMessages, { role: 'assistant', text: '⚠️ LLM error: Something went wrong.' }];
+      setMessages(failed);
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+      const result = await uploadFile(file);
+      const fileMsg = {
+        role: 'assistant',
+        text: `✅ File '${file.name}' uploaded successfully. Choose an action below.`,
+      };
+      setSessionId(result.session_id);
+      setMessages(prev => [...prev, fileMsg]);
+      setLastUploadedFileName(file.name);
+      setShowFileActionButtons(true);
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'assistant', text: '⚠️ File upload failed.' }]);
+    }
+  };
+
+  const handleAnalyzeChoice = async (type) => {
+    try {
+      const response = await analyzeFile(sessionId, type);
+      const resultMsg = {
+        role: 'assistant',
+        text: `${type === 'summarize' ? '📝' : '📄'} ${response.result}`,
+      };
+      const updated = [...messages, resultMsg];
+      setMessages(updated);
+      setShowFileActionButtons(false);
+
+      const id = activeChatId || Date.now().toString();
+      saveChat({
+        id,
+        title: `File '${lastUploadedFileName}' uploaded`,
+        messages: updated,
+        userId: userName,
+      });
+      localStorage.setItem('activeChatId', id);
+      setActiveChatId(id);
+      setChatHistory(getChatHistory(userName));
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'assistant', text: '⚠️ Analysis failed.' }]);
     }
   };
 
@@ -92,7 +134,6 @@ function Chat() {
     setMessages([]);
     setChatHistory([]);
     localStorage.removeItem('activeChatId');
-    setActiveChatId(null);
   };
 
   const startEditingTitle = (chat) => {
@@ -113,20 +154,11 @@ function Chat() {
     <div className="min-h-screen bg-gray-700 text-white flex">
       {showSidebar && (
         <aside className="w-64 bg-gray-800 p-4 border-r border-gray-600 font-serif overflow-y-auto">
-          <button
-            onClick={openNewChatTab}
-            className="bg-white text-black rounded-full px-4 py-2 mb-4 w-full"
-          >
-            New Chat
-          </button>
-
+          <button onClick={startNewChat} className="bg-white text-black rounded-full px-4 py-2 mb-4 w-full">New Chat</button>
           <div className="flex justify-between items-center mb-2">
             <h3 className="font-bold text-lg">Previous Chats</h3>
-            <button className="text-sm text-red-400 hover:underline" onClick={handleClearAll}>
-              Clear All
-            </button>
+            <button className="text-sm text-red-400 hover:underline" onClick={handleClearAll}>Clear All</button>
           </div>
-
           {chatHistory.length === 0 ? (
             <p className="text-gray-400 text-sm">No history yet.</p>
           ) : (
@@ -150,9 +182,7 @@ function Chat() {
                         localStorage.setItem('activeChatId', chat.id);
                         setShowSidebar(false);
                       }}
-                      className={`cursor-pointer hover:underline ${
-                        chat.id === activeChatId ? 'text-blue-400 font-bold' : ''
-                      }`}
+                      className={`cursor-pointer hover:underline ${chat.id === activeChatId ? 'text-blue-400 font-bold' : ''}`}
                     >
                       {chat.title}
                       <div className="text-xs text-gray-400">
@@ -161,18 +191,8 @@ function Chat() {
                     </div>
                   )}
                   <div className="flex justify-end gap-2 mt-1">
-                    <button
-                      className="text-xs text-blue-400 hover:underline"
-                      onClick={() => startEditingTitle(chat)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="text-xs text-red-400 hover:underline"
-                      onClick={() => handleDeleteChat(chat.id)}
-                    >
-                      Delete
-                    </button>
+                    <button className="text-xs text-blue-400 hover:underline" onClick={() => startEditingTitle(chat)}>Edit</button>
+                    <button className="text-xs text-red-400 hover:underline" onClick={() => handleDeleteChat(chat.id)}>Delete</button>
                   </div>
                 </li>
               ))}
@@ -181,24 +201,17 @@ function Chat() {
         </aside>
       )}
 
-      {/* Main chat area */}
       <div className="flex-1 flex flex-col relative">
         <header className="flex items-center justify-between px-4 py-2">
           <div className="flex items-center gap-2">
-            <button onClick={toggleSidebar}>
-              <img src="/assets/history.png" alt="History" className="h-6" />
-            </button>
-            <button onClick={openNewChatTab}>
-              <img src="/assets/new-chat.png" alt="New Chat" className="h-5" />
-            </button>
+            <button onClick={toggleSidebar}><img src="/assets/history.png" alt="History" className="h-6" /></button>
+            <button onClick={startNewChat}><img src="/assets/new-chat.png" alt="New Chat" className="h-5" /></button>
             <h1 className="text-2xl font-serif font-bold">SynthesisTalk</h1>
             <img src="/assets/logo.png" alt="Logo" className="h-8" />
           </div>
           <div className="flex items-center gap-4">
             <button className="text-white text-2xl"><i className="fas fa-share-alt"></i></button>
-            <button className="text-white text-2xl" onClick={() => setShowProfile(true)}>
-              <i className="fas fa-user-circle"></i>
-            </button>
+            <button className="text-white text-2xl" onClick={() => setShowProfile(true)}><i className="fas fa-user-circle"></i></button>
           </div>
         </header>
 
@@ -206,27 +219,27 @@ function Chat() {
 
         <main className="flex-1 flex flex-col items-center text-center px-4 overflow-y-auto">
           <h2 className="text-2xl font-serif mb-4">Hi, How can I help you today?</h2>
-          <div className="flex flex-wrap gap-4 justify-center mb-6">
-            <button className="bg-white text-black font-serif rounded-full px-4 py-2">Summarize this article</button>
-            <button className="bg-white text-black font-serif rounded-full px-4 py-2">Explain this concept</button>
-            <button className="bg-white text-black font-serif rounded-full px-4 py-2">Search in documents only</button>
-          </div>
-
           <div className="w-full max-w-xl text-left">
             {messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`my-2 p-2 rounded ${msg.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-300 text-black'}`}
-              >
+              <div key={index} className={`my-2 p-2 rounded ${msg.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-300 text-black'}`}>
                 <strong>{msg.role === 'user' ? 'You' : 'AI'}: </strong>{msg.text}
               </div>
             ))}
           </div>
+
+          {showFileActionButtons && (
+            <div className="mt-4 flex flex-col gap-2">
+              <button onClick={() => handleAnalyzeChoice('summarize')} className="bg-blue-500 text-white rounded-full px-4 py-2">📝 Summarize (Paragraph)</button>
+              <button onClick={() => handleAnalyzeChoice('extract key points')} className="bg-green-500 text-white rounded-full px-4 py-2">📄 Analyze (Bullet Points)</button>
+            </div>
+          )}
         </main>
 
         <footer className="px-4 py-8">
           <div className="bg-white text-black rounded-full flex items-center px-6 py-8 w-full text-lg">
-            <span className="text-3xl mr-4">+</span>
+            <label className="text-3xl mr-4 cursor-pointer">+
+              <input type="file" accept=".pdf,.txt" onChange={handleFileUpload} className="hidden" />
+            </label>
             <input
               type="text"
               value={input}

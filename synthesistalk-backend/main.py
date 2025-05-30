@@ -1,3 +1,5 @@
+# main.py
+
 import os
 import uuid
 import shutil
@@ -6,7 +8,7 @@ import requests
 import fitz  # PyMuPDF for PDF text extraction
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -17,6 +19,7 @@ load_dotenv()
 NGU_API_KEY = os.getenv("NGU_API_KEY")
 NGU_BASE_URL = os.getenv("NGU_BASE_URL")
 NGU_MODEL = os.getenv("NGU_MODEL")
+SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 
 # Validate essential variables
 if not NGU_API_KEY or not NGU_BASE_URL or not NGU_MODEL:
@@ -25,7 +28,7 @@ if not NGU_API_KEY or not NGU_BASE_URL or not NGU_MODEL:
 # Create FastAPI app
 app = FastAPI()
 
-# Allow CORS for all origins (you can restrict this in production)
+# Allow CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -74,7 +77,6 @@ async def analyze(data: dict):
     file_path = session["filepath"]
     file_ext = os.path.splitext(file_path)[1].lower()
 
-    # Extract file text based on type
     try:
         if file_ext == ".pdf":
             doc = fitz.open(file_path)
@@ -90,7 +92,6 @@ async def analyze(data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to extract text: {str(e)}")
 
-    # Build prompt for LLM
     prompt = f"Please {action} the following text:\n\n{content[:4000]}"
 
     try:
@@ -120,11 +121,20 @@ async def analyze(data: dict):
 async def chat(data: dict):
     user_message = data.get("message")
     session_id = data.get("session_id")
+    is_web_search = data.get("web_search", False)
 
     if not user_message or not session_id:
         raise HTTPException(status_code=400, detail="Missing message or session_id")
 
     messages = [{"role": "user", "content": user_message}]
+
+    if is_web_search:
+        web_results = perform_web_search(user_message)
+        if web_results:
+            messages.append({
+                "role": "system",
+                "content": f"Use the following web results:\n{web_results}"
+            })
 
     try:
         response = requests.post(
@@ -156,6 +166,23 @@ async def chat(data: dict):
             status_code=500,
             content={"reply": f"Unexpected error: {str(e)}", "session_id": session_id}
         )
+
+
+def perform_web_search(query):
+    try:
+        params = {
+            "engine": "google",
+            "q": query,
+            "api_key": SERPAPI_KEY,
+            "num": 3
+        }
+        response = requests.get("https://serpapi.com/search", params=params)
+        response.raise_for_status()
+        results = response.json().get("organic_results", [])
+        snippets = [f"{item['title']}: {item['snippet']}" for item in results if 'title' in item and 'snippet' in item]
+        return "\n".join(snippets) if snippets else None
+    except Exception as e:
+        return f"Web search failed: {str(e)}"
 
 
 if __name__ == "__main__":
