@@ -1,46 +1,187 @@
-import React, { useState } from 'react';
+// src/pages/Chat.js
+
+import React, { useState, useEffect } from 'react';
 import { sendMessageToLLM } from '../chatService';
+import {
+  saveChat,
+  getChatHistory,
+  deleteChat,
+  clearChatHistory,
+} from '../chatStorage';
 import Profile from './Profile';
+import { formatDistanceToNow } from 'date-fns';
 
 function Chat() {
   const [showSidebar, setShowSidebar] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState([]);
+  const [chatHistory, setChatHistory] = useState([]);
+  const [editingChatId, setEditingChatId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [activeChatId, setActiveChatId] = useState(localStorage.getItem('activeChatId'));
 
-  const toggleSidebar = () => setShowSidebar(prev => !prev);
-  const openNewChatTab = () => window.open(window.location.origin + '/chat', '_blank');
+  const [userName] = useState(() => {
+    const saved = localStorage.getItem('chatUser');
+    return saved ? JSON.parse(saved).name : 'Guest';
+  });
+
+  useEffect(() => {
+    const history = getChatHistory(userName);
+    setChatHistory(history);
+
+    if (activeChatId) {
+      const existing = history.find(c => c.id === activeChatId);
+      if (existing) setMessages(existing.messages);
+    }
+  }, [userName, activeChatId]);
+
+  const toggleSidebar = () => {
+    setChatHistory(getChatHistory(userName));
+    setShowSidebar(prev => !prev);
+  };
+
+  const openNewChatTab = () => {
+    window.open(window.location.origin + '/chat', '_blank');
+  };
 
   const handleSend = async () => {
-    if (input.trim() === '') return;
+    if (!input.trim()) return;
 
     const updatedMessages = [...messages, { role: 'user', text: input }];
     setMessages(updatedMessages);
     setInput('');
 
     try {
-      const reply = await sendMessageToLLM(input);
-      setMessages([...updatedMessages, { role: 'assistant', text: reply }]);
+      const response = await sendMessageToLLM(input);
+      const newChat = [...updatedMessages, { role: 'assistant', text: response.reply }];
+      setMessages(newChat);
+
+      const id = activeChatId || Date.now().toString();
+
+      saveChat({
+        id,
+        title: updatedMessages[0]?.text.slice(0, 30) + '...',
+        messages: newChat,
+        userId: userName,
+      });
+
+      localStorage.setItem('activeChatId', id);
+      setActiveChatId(id);
+      setChatHistory(getChatHistory(userName));
     } catch (error) {
-      console.error("Message send failed:", error);
-      setMessages([...updatedMessages, { role: 'assistant', text: "Something went wrong." }]);
+      setMessages([
+        ...updatedMessages,
+        { role: 'assistant', text: '⚠️ LLM error: Something went wrong.' },
+      ]);
     }
+  };
+
+  const handleDeleteChat = (id) => {
+    deleteChat(id, userName);
+    if (id === activeChatId) {
+      setMessages([]);
+      localStorage.removeItem('activeChatId');
+      setActiveChatId(null);
+    }
+    setChatHistory(getChatHistory(userName));
+  };
+
+  const handleClearAll = () => {
+    clearChatHistory(userName);
+    setMessages([]);
+    setChatHistory([]);
+    localStorage.removeItem('activeChatId');
+    setActiveChatId(null);
+  };
+
+  const startEditingTitle = (chat) => {
+    setEditingChatId(chat.id);
+    setEditTitle(chat.title);
+  };
+
+  const saveTitleEdit = (id) => {
+    const updatedHistory = chatHistory.map(chat =>
+      chat.id === id ? { ...chat, title: editTitle } : chat
+    );
+    localStorage.setItem(`chatHistory:${userName}`, JSON.stringify(updatedHistory));
+    setChatHistory(updatedHistory);
+    setEditingChatId(null);
   };
 
   return (
     <div className="min-h-screen bg-gray-700 text-white flex">
       {showSidebar && (
-        <aside className="w-64 bg-gray-800 p-4 border-r border-gray-600 font-serif">
+        <aside className="w-64 bg-gray-800 p-4 border-r border-gray-600 font-serif overflow-y-auto">
           <button
             onClick={openNewChatTab}
             className="bg-white text-black rounded-full px-4 py-2 mb-4 w-full"
           >
             New Chat
           </button>
-          {/* Add sidebar history content here if needed */}
+
+          <div className="flex justify-between items-center mb-2">
+            <h3 className="font-bold text-lg">Previous Chats</h3>
+            <button className="text-sm text-red-400 hover:underline" onClick={handleClearAll}>
+              Clear All
+            </button>
+          </div>
+
+          {chatHistory.length === 0 ? (
+            <p className="text-gray-400 text-sm">No history yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {chatHistory.map(chat => (
+                <li key={chat.id} className="text-sm">
+                  {editingChatId === chat.id ? (
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onBlur={() => saveTitleEdit(chat.id)}
+                      onKeyDown={(e) => e.key === 'Enter' && saveTitleEdit(chat.id)}
+                      autoFocus
+                      className="bg-gray-700 text-white border-b w-full"
+                    />
+                  ) : (
+                    <div
+                      onClick={() => {
+                        setMessages(chat.messages);
+                        setActiveChatId(chat.id);
+                        localStorage.setItem('activeChatId', chat.id);
+                        setShowSidebar(false);
+                      }}
+                      className={`cursor-pointer hover:underline ${
+                        chat.id === activeChatId ? 'text-blue-400 font-bold' : ''
+                      }`}
+                    >
+                      {chat.title}
+                      <div className="text-xs text-gray-400">
+                        {formatDistanceToNow(new Date(chat.timestamp), { addSuffix: true })}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2 mt-1">
+                    <button
+                      className="text-xs text-blue-400 hover:underline"
+                      onClick={() => startEditingTitle(chat)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="text-xs text-red-400 hover:underline"
+                      onClick={() => handleDeleteChat(chat.id)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </aside>
       )}
 
+      {/* Main chat area */}
       <div className="flex-1 flex flex-col relative">
         <header className="flex items-center justify-between px-4 py-2">
           <div className="flex items-center gap-2">
