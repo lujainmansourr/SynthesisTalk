@@ -19,7 +19,7 @@ function Chat() {
   const [chatHistory, setChatHistory] = useState([]);
   const [editingChatId, setEditingChatId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
-  const [activeChatId, setActiveChatId] = useState(localStorage.getItem('activeChatId'));
+  const [activeChatId, setActiveChatId] = useState(null);
   const [userName] = useState(() => {
     const saved = localStorage.getItem('chatUser');
     return saved ? JSON.parse(saved).name : 'Guest';
@@ -30,12 +30,15 @@ function Chat() {
   const [lastUploadedFileName, setLastUploadedFileName] = useState('');
 
   useEffect(() => {
+    const newSessionId = Date.now().toString();
+    setActiveChatId(newSessionId);
+    setSessionId(newSessionId);
+    localStorage.setItem('sessionId', newSessionId);
+    localStorage.removeItem('activeChatId'); // force fresh chat
+    setMessages([]);
     setChatHistory(getChatHistory(userName));
-    if (activeChatId) {
-      const saved = getChatHistory(userName).find(c => c.id === activeChatId);
-      if (saved) setMessages(saved.messages);
-    }
-  }, [activeChatId, userName]);
+  }, [userName]);
+
 
   const toggleSidebar = () => {
     setChatHistory(getChatHistory(userName));
