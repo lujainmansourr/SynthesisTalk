@@ -1,17 +1,25 @@
 // src/chatStorage.js
 
-// Get chat history for a user (default 'guest')
-export function getChatHistory(userId = 'guest') {
-  const history = localStorage.getItem(`chatHistory_${userId}`);
-  return history ? JSON.parse(history) : [];
+export function getChatHistory(userId) {
+  const raw = localStorage.getItem(`chatHistory:${userId}`);
+  return raw ? JSON.parse(raw) : [];
 }
 
-// Save chat history for a user
-export function saveChatHistory(userId = 'guest', messages = []) {
-  localStorage.setItem(`chatHistory_${userId}`, JSON.stringify(messages));
+export function saveChat(chat) {
+  const key = `chatHistory:${chat.userId}`;
+  const existing = getChatHistory(chat.userId);
+  const updated = existing.filter(c => c.id !== chat.id);
+  updated.push({ ...chat, timestamp: chat.timestamp || new Date().toISOString() });
+  localStorage.setItem(key, JSON.stringify(updated));
 }
 
-// Clear chat history for a user
-export function clearChatHistory(userId = 'guest') {
-  localStorage.removeItem(`chatHistory_${userId}`);
+export function deleteChat(chatId, userId) {
+  const key = `chatHistory:${userId}`;
+  const existing = getChatHistory(userId);
+  const filtered = existing.filter(c => c.id !== chatId);
+  localStorage.setItem(key, JSON.stringify(filtered));
+}
+
+export function clearChatHistory(userId) {
+  localStorage.removeItem(`chatHistory:${userId}`);
 }
