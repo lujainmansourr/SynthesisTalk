@@ -164,4 +164,4 @@ def call_ngu_with_context(messages):
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"LLM error (NGU): {str(e)}"
+        return f"LLM error (NGU): {str(e)}"
