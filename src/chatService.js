@@ -15,7 +15,7 @@ export async function sendMessageToLLM(message, sessionId, webSearch = false) {
     throw new Error('LLM request failed');
   }
 
-  return await response.json(); // { reply, session_id }
+  return await response.json(); 
 }
 
 export async function uploadFile(file) {
@@ -33,7 +33,7 @@ export async function uploadFile(file) {
     throw new Error('Upload failed');
   }
 
-  return await response.json(); // { session_id, message }
+  return await response.json(); 
 }
 
 export async function analyzeFile(sessionId, action) {
@@ -49,5 +49,22 @@ export async function analyzeFile(sessionId, action) {
     throw new Error('Analysis failed');
   }
 
-  return await response.json(); // { result }
+  return await response.json(); 
+}
+
+export async function downloadSummaryPDF(sessionId, action = "summarize") {
+  const response = await fetch(`${API_BASE}/api/summarize-pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, action }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error("PDF download error:", error);
+    throw new Error('PDF download failed');
+  }
+
+  const blob = await response.blob();
+  return blob; 
 }

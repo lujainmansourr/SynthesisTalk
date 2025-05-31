@@ -1,34 +1,28 @@
-# main.py
-
 import os
 import uuid
 import shutil
 import uvicorn
 import requests
-import fitz  # PyMuPDF for PDF text extraction
+import fitz  # PyMuPDF
+import io
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
-# Load environment variables
 load_dotenv()
 
-# Config
-NGU_API_KEY = os.getenv("NGU_API_KEY")
-NGU_BASE_URL = os.getenv("NGU_BASE_URL")
-NGU_MODEL = os.getenv("NGU_MODEL")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_BASE_URL = os.getenv("GROQ_BASE_URL")
+GROQ_MODEL = os.getenv("GROQ_MODEL")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
 
-# Validate essential variables
-if not NGU_API_KEY or not NGU_BASE_URL or not NGU_MODEL:
+if not GROQ_API_KEY or not GROQ_BASE_URL or not GROQ_MODEL:
     raise RuntimeError("❌ Missing one or more required environment variables.")
 
-# Create FastAPI app
 app = FastAPI()
 
-# Allow CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -36,7 +30,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Session storage for uploaded files
 sessions = {}
 
 @app.post("/api/upload")
@@ -60,7 +53,6 @@ async def upload(file: UploadFile = File(...)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
 
 @app.post("/api/analyze")
 async def analyze(data: dict):
@@ -96,13 +88,13 @@ async def analyze(data: dict):
 
     try:
         response = requests.post(
-            f"{NGU_BASE_URL}/chat/completions",
+            f"{GROQ_BASE_URL}/chat/completions",
             headers={
-                "Authorization": f"Bearer {NGU_API_KEY}",
+                "Authorization": f"Bearer {GROQ_API_KEY}",
                 "Content-Type": "application/json"
             },
             json={
-                "model": NGU_MODEL,
+                "model": GROQ_MODEL,
                 "messages": [{"role": "user", "content": prompt}]
             },
             timeout=20
@@ -112,10 +104,73 @@ async def analyze(data: dict):
         return {"result": reply}
 
     except requests.exceptions.HTTPError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=f"NGU error: {e.response.reason}")
+        raise HTTPException(status_code=e.response.status_code, detail=f"GROQ error: {e.response.reason}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
+@app.post("/api/summarize-pdf")
+async def summarize_pdf(data: dict):
+    session_id = data.get("session_id")
+    action = data.get("action", "summarize")  
+
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Missing session_id")
+
+    session = sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    file_path = session["filepath"]
+    file_ext = os.path.splitext(file_path)[1].lower()
+
+    try:
+        if file_ext == ".pdf":
+            doc = fitz.open(file_path)
+            content = "\n".join(page.get_text() for page in doc)
+            doc.close()
+        else:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        if not content.strip():
+            raise ValueError("File has no readable text.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to extract text: {str(e)}")
+
+    prompt = f"Please {action} the following text:\n\n{content[:4000]}"
+
+    try:
+        response = requests.post(
+            f"{GROQ_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": GROQ_MODEL,
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            timeout=20
+        )
+        response.raise_for_status()
+        result_text = response.json().get("choices", [{}])[0].get("message", {}).get("content", f"No {action} available")
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{action.capitalize()} failed: {str(e)}")
+
+    pdf_buffer = io.BytesIO()
+    pdf_doc = fitz.open()
+    page = pdf_doc.new_page()
+    rect = fitz.Rect(50, 50, 550, 800)
+    page.insert_textbox(rect, result_text, fontsize=12, fontname="helv")
+    pdf_doc.save(pdf_buffer)
+    pdf_doc.close()
+    pdf_buffer.seek(0)
+
+    headers = {
+        "Content-Disposition": f"attachment; filename={action.replace(' ', '_')}_{session['filename']}.pdf"
+    }
+
+    return StreamingResponse(pdf_buffer, media_type="application/pdf", headers=headers)
 
 @app.post("/api/chat")
 async def chat(data: dict):
@@ -138,13 +193,13 @@ async def chat(data: dict):
 
     try:
         response = requests.post(
-            f"{NGU_BASE_URL}/chat/completions",
+            f"{GROQ_BASE_URL}/chat/completions",
             headers={
-                "Authorization": f"Bearer {NGU_API_KEY}",
+                "Authorization": f"Bearer {GROQ_API_KEY}",
                 "Content-Type": "application/json"
             },
             json={
-                "model": NGU_MODEL,
+                "model": GROQ_MODEL,
                 "messages": messages
             },
             timeout=15
@@ -159,14 +214,13 @@ async def chat(data: dict):
     except requests.exceptions.HTTPError as e:
         return JSONResponse(
             status_code=e.response.status_code,
-            content={"reply": f"LLM error (NGU): {e.response.status_code} {e.response.reason}", "session_id": session_id}
+            content={"reply": f"LLM error (GROQ): {e.response.status_code} {e.response.reason}", "session_id": session_id}
         )
     except Exception as e:
         return JSONResponse(
             status_code=500,
             content={"reply": f"Unexpected error: {str(e)}", "session_id": session_id}
         )
-
 
 def perform_web_search(query):
     try:
@@ -183,7 +237,6 @@ def perform_web_search(query):
         return "\n".join(snippets) if snippets else None
     except Exception as e:
         return f"Web search failed: {str(e)}"
-
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
