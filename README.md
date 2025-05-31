@@ -30,16 +30,16 @@ SynthesisTalk allows users to:
 - **Deployment**: GitHub 
 
 ## Project Structure
-SynthesisTalk/
-├── synthesistalk-frontend/   # React frontend app
-│   ├── src/
-│   ├── public/
-│   └── package.json
-├── synthesistalk-backend/    # FastAPI backend app
-│   ├── main.py
-│   ├── requirements.txt
-│   └── .env (environment variables)
-└── README.md
+<br>SynthesisTalk/
+<br>synthesistalk-frontend/   # React frontend app
+<br>src/
+<br>public/
+<br>package.json
+<br>synthesistalk-backend/    # FastAPI backend app
+<br>main.py
+<br>requirements.txt
+<br>.env (environment variables)
+<br>README.md
 
 ## Setup Instructions
 - **Backend Setup**:
