@@ -9,6 +9,9 @@ function Login() {
   const [password, setPassword] = useState('');
 
   const handleGuestLogin = () => {
+    // Optional: Set guest mode if needed
+    localStorage.removeItem('chatUser');
+    localStorage.setItem('guestMode', 'true');
     navigate('/chat');
   };
 
@@ -19,11 +22,19 @@ function Login() {
       const user = userCredential.user;
 
       if (!user.emailVerified) {
-        alert('❌ Please verify your email address before logging in. Check your inbox.');
+        alert('❌ Please Verify Your Email Address Before Logging In. Check Your Inbox.');
         return;
       }
 
-      console.log('✅ User logged in:', user);
+      console.log('✅ User Logged In:', user);
+
+      // Store user info for Chat.js detection
+      localStorage.setItem('chatUser', JSON.stringify({
+        name: user.displayName || 'User',
+        email: user.email || '',
+      }));
+      localStorage.removeItem('guestMode'); // Ensure guest mode is removed if it was set
+
       navigate('/chat');
     } catch (error) {
       console.error('❌ Firebase Error:', error);
@@ -33,19 +44,19 @@ function Login() {
       let message;
       switch (errorCode) {
         case 'auth/user-not-found':
-          message = '❌ No account found. Please sign up first.';
+          message = '❌ No Account Found. Please Sign Up First.';
           break;
         case 'auth/wrong-password':
-          message = '❌ Incorrect password.';
+          message = '❌ Incorrect Password.';
           break;
         case 'auth/invalid-email':
-          message = '❌ Invalid email format.';
+          message = '❌ Invalid Email Format.';
           break;
         case 'auth/too-many-requests':
-          message = '❌ Too many login attempts. Try again later.';
+          message = '❌ Too Many Login Attempts. Try Again Later.';
           break;
         default:
-          message = '❌ Login failed. Please try again.';
+          message = '❌ Login Failed. Incorrect Email or Password.';
       }
       alert(message);
     }

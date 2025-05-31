@@ -29,23 +29,23 @@ function Signup() {
       await updateProfile(user, { displayName: name });
       await sendEmailVerification(user);
 
-      console.log('📧 Verification email sent to:', email);
+      console.log('📧 Verification Email Sent To:', email);
       setVerificationSent(true); // Show the new UI
     } catch (error) {
-      console.error('Signup failed:', error.message);
+      console.error('Signup Failed:', error.message);
       let message;
       switch (error.code) {
         case 'auth/email-already-in-use':
-          message = '❌ This email is already registered. Please log in instead.';
+          message = '❌ This Email Is Already Registered. Please Log In Instead.';
           break;
         case 'auth/invalid-email':
-          message = '❌ Please enter a valid email address.';
+          message = '❌ Please Enter a Valid Email Address.';
           break;
         case 'auth/weak-password':
-          message = '❌ Password must be at least 6 characters.';
+          message = '❌ Password Must Be At Least 6 Characters.';
           break;
         default:
-          message = '❌ Signup failed. Please try again.';
+          message = '❌ Signup Failed. Please Try Again.';
       }
       alert(message);
     }
